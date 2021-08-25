@@ -53,6 +53,12 @@ def add_arguments(parser):
                         default=10,
                         help='before the setting number, train model as pure gan instead of cycle gan')
 
+    parser.add_argument('--sample_mode',
+                        type=str,
+                        default="fix",
+                        choices=["all", "random", "fix"],
+                        help='the type of sampling validation dataset')
+
     parser.add_argument('--train_data_path',
                         type=str,
                         default='data/train_data',

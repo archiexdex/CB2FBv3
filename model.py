@@ -3,7 +3,7 @@ import itertools
 import torch
 from torch import nn, optim
 from torch.autograd import Variable
-from torchvision.utils import save_image, make_grid
+from torchvision.utils import  make_grid
 from tqdm import tqdm
 
 from networks import *
@@ -181,23 +181,34 @@ gan: {gan_loss: .3e}, cycle: {cycle_loss: .3e}, ident: {ident_loss: .3e}, sobel:
             self.dc_scheduler.step()
             self.df_scheduler.step()
 
-    def sample_image(self, opt, dataset):
-        id_list = [125, 547, 1093]
+    def sample_image(self, dataset, sample_mode="fix"):
+        id_list, buf = [], {} 
+        if sample_mode == "all":
+            id_list = [i for i in range(len(dataset))]
+        elif sample_mode == "random":
+            # Notice: do not use same_seed to fix random
+            for i in range(3):
+                id_list.append(random.randint(0, len(dataset)-1))
+        elif sample_mode == "fix":
+            id_list = [125, 547, 1093]
+
         for idx in id_list:
             data = dataset.__getitem__(idx)
             real_cb, real_fb, mask = map(lambda z: torch.unsqueeze(z, 0).to(self.device), data)
             fake_fb = self.models["Gcf"](real_cb)
             real_cb, real_fb, fake_fb = map(lambda z: z.squeeze(0), [real_cb, real_fb, fake_fb])
             img_sample = make_grid([real_cb, fake_fb, real_fb])
-            save_image(img_sample, f"{opt.rst_dir}/{opt.no}/{idx}.png")
+            buf[f"idx"] = img_sample
+        return buf
 
     def save(self, path, mode="best"):
         for i in self.models:
             torch.save(self.models[i].state_dict(), os.path.join(path, f"{mode}_{i}.cpt"))
 
-    def load(self, opt, mode="best"):
+    def load(self, mode="best"):
         for i in self.models:
-            self.models[i].load_state_dict(torch.load(os.path.join(opt.cpt_dir, f"{opt.no}/{mode}_[i].cpt")))
+            self.models[i].load_state_dict(torch.load(os.path.join(self.opt.cpt_dir, f"{self.opt.no}/{mode}_{i}.cpt")))
+            self.models[i].to(self.device)
 
     def _get_sobel_loss(self, real, fake):
         imgx, imgy = self.sobel(fake-real)
