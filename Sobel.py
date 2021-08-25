@@ -9,81 +9,51 @@ from math import exp
 import cv2
 import matplotlib.pyplot as plt
 
-def sobel(window_size):
-	assert(window_size%2!=0)
-	ind=window_size//2
-	matx=[]
-	maty=[]
-	for j in range(-ind,ind+1):
-		row=[]
-		for i in range(-ind,ind+1):
-			if (i*i+j*j)==0:
-				gx_ij=0
-			else:
-				gx_ij=i/float(i*i+j*j)
-			row.append(gx_ij)
-		matx.append(row)
-	for j in range(-ind,ind+1):
-		row=[]
-		for i in range(-ind,ind+1):
-			if (i*i+j*j)==0:
-				gy_ij=0
-			else:
-				gy_ij=j/float(i*i+j*j)
-			row.append(gy_ij)
-		maty.append(row)
-	
+def sobel(kernel_size):
+    assert kernel_size in [3,5,7]
+    ind = kernel_size//2
+    matx = torch.zeros((kernel_size, kernel_size))
+    maty = torch.zeros((kernel_size, kernel_size))
+    for j in range(-ind,ind+1):
+        for i in range(-ind,ind+1):
+            matx[j][i] = i / (i*i+j*j) if i*i+j*j>0 else 0
+            maty[j][i] = j / (i*i+j*j) if i*i+j*j>0 else 0
 
-	if window_size==3:
-		mult=2
-	elif window_size==5:
-		mult=20
-	elif window_size==7:
-		mult=780
+    if kernel_size==3:
+        mult = 2
+    elif kernel_size==5:
+        mult = 20
+    elif kernel_size==7:
+        mult = 780
 
-	matx=np.array(matx)*mult				
-	maty=np.array(maty)*mult
+    matx *= mult
+    maty *= mult
 
-	return torch.Tensor(matx), torch.Tensor(maty)
+    return matx, maty
 
-def create_window(window_size, channel):
-	windowx,windowy = sobel(window_size)
-	windowx,windowy= windowx.unsqueeze(0).unsqueeze(0), windowy.unsqueeze(0).unsqueeze(0)
-	windowx = torch.Tensor(windowx.expand(channel,1,window_size,window_size))
-	windowy = torch.Tensor(windowy.expand(channel,1,window_size,window_size))
+def create_window(kernel_size, channel):
+    windowx, windowy = sobel(kernel_size)
+    #windowx, windowy = map(lambda x: x.view(1,1,kernel_size,kernel_size), sobel(kernel_size)).repeat(channel,channel,1,1), sobel(kernel_size))
+    # windowx [kernel_size, kernel_size]
+    windowx, windowy = windowx.view(1,1,kernel_size,kernel_size), windowy.view(1,1,kernel_size,kernel_size)
+    # windowx [1, 1, kernel_size, kernel_size]
+    windowx, windowy = windowx.repeat(channel,channel,1,1), windowy.repeat(channel,channel,1,1)
+    # windowx [out_channel, in_channel, kernel_size, kernel_size]
+    return windowx,windowy
 
-	return windowx,windowy
-
-def gradient(img, windowx, windowy, window_size, padding, channel):
-	if channel > 1 :		# do convolutions on each channel separately and then concatenate
-		gradx=torch.ones(img.shape)
-		grady=torch.ones(img.shape)
-		for i in range(channel):
-			gradx[:,i,:,:]=F.conv2d(img[:,i,:,:].unsqueeze(0), windowx, padding=padding,groups=1).squeeze(0)   #fix the padding according to the kernel size
-			grady[:,i,:,:]=F.conv2d(img[:,i,:,:].unsqueeze(0), windowy, padding=padding,groups=1).squeeze(0)
-
-	else:
-		gradx = F.conv2d(img, windowx, padding=padding,groups=1)
-		grady = F.conv2d(img, windowy, padding=padding,groups=1)
-
-	return gradx, grady
+def gradient(img, windowx, windowy, padding):
+    gradx = F.conv2d(img, windowx, padding=padding)
+    grady = F.conv2d(img, windowy, padding=padding)
+    return gradx, grady
 
 class SobelGrad(torch.nn.Module):
-	def __init__(self, window_size = 3, padding= 1):
-		super(SobelGrad, self).__init__()
-		self.window_size = window_size
-		self.padding= padding
-		self.channel = 1			# out channel
-		self.windowx,self.windowy = create_window(window_size, self.channel)
+    def __init__(self, kernel_size=3, channel=1, device='cuda'):
+        super().__init__()
+        self.kernel_size = kernel_size
+        self.padding= kernel_size >> 1
+        self.channel = channel
+        self.windowx, self.windowy = map(lambda x: x.to(device), create_window(kernel_size, channel))
 
-	def forward(self, x):
-		(batch_size, channel, _, _) = x.size()
-		if x.is_cuda:
-			self.windowx = self.windowx.cuda()
-			self.windowx = self.windowx.type_as(x)
-			self.windowy = self.windowy.cuda()
-			self.windowy = self.windowy.type_as(x)		
-		
-		gradx, grady = gradient(x, self.windowx, self.windowy, self.window_size, self.padding, channel)
-
-		return gradx, grady
+    def forward(self, x):
+        gradx, grady = gradient(x, self.windowx, self.windowy, self.padding)
+        return gradx, grady
