@@ -22,8 +22,6 @@ def parse(args=None):
     parser = argparse.ArgumentParser()
     from arguments import add_arguments
     parser = add_arguments(parser)
-    #except:
-    #    pass
     if args is not None:
         return parser.parse_args(args=args)
     else:

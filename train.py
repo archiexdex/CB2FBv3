@@ -62,16 +62,15 @@ st_time = datetime.now()
 for epoch in range(total_epoch):
     print(f"Epoch: {epoch}!!")
     # Train model
-    train_loss = model.train(train_dataloader)
+    train_loss = model.train(train_dataloader, epoch)
     valid_loss = model.test(valid_dataloader)
+    model.scheduler_step(epoch)
     # Record loss
     msssim_curve["train"].append(train_loss[0]); ssim_curve["train"].append(train_loss[1]); psnr_curve["train"].append(train_loss[2])
     msssim_curve["valid"].append(valid_loss[0]); ssim_curve["valid"].append(valid_loss[1]); psnr_curve["valid"].append(valid_loss[2])
     # Update best loss
-    if (best_msssim < valid_loss[0] or best_ssim < valid_loss[1]) and best_psnr < valid_loss[2]:
-        best_msssim = valid_loss[0]
-        best_ssim   = valid_loss[1]
-        best_psnr   = valid_loss[2]
+    if (best_msssim < valid_loss[0] or best_ssim < valid_loss[1]) or best_psnr < valid_loss[2]:
+        best_msssim, best_ssim, best_psnr = valid_loss
         model.save(cpt_dir)
         earlystop_counter = 0
         print(f"\33[91m>>>> Best model saved epoch: {epoch}!!<<\33[0m")
@@ -80,7 +79,7 @@ for epoch in range(total_epoch):
         model.save(cpt_dir, "freq")
         print(f">> Freq model saved epoch: {epoch}!!")
         earlystop_counter += 1
-        if opt.early_stop and earlystop_counter >= patience:
+        if not opt.no_early_stop and earlystop_counter >= patience:
             print("Early stop!!!")
             break
 # Record
@@ -88,4 +87,4 @@ with open(f"{log_dir}/ssim_curve.json", "w") as fp:
     json.dump(ssim_curve, fp)
 with open(f"{log_dir}/psnr_curve.json", "w") as fp:
     json.dump(psnr_curve, fp)
-print(f"Finish training no: {no}, cost time: {datetime.now-st_time}")
+print(f"Finish training no: {no}, cost time: {datetime.now()-st_time}")

@@ -15,8 +15,8 @@ class CTDataset(Dataset):
         """
         root_dir = config.train_data_path if isTrain else config.test_data_path
         self.isTrain = isTrain
-        self.crop = config.crop
-        if self.crop:
+        self.no_crop = config.no_crop
+        if not self.no_crop:
             self.crop_size = config.crop_size
         
         self.input_data_path = os.path.join(root_dir, "cb")
@@ -27,7 +27,7 @@ class CTDataset(Dataset):
         
     def transform(self, x, y, cm, qafb=None):
         if self.isTrain:
-            if self.crop:
+            if not self.no_crop:
                 # Random crop
                 h, w = x.shape[:2]
                 th, tw = (self.crop_size, self.crop_size)

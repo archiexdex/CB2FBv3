@@ -10,14 +10,6 @@ def weights_init_normal(m):
         nn.init.normal_(m.weight.data, 1.0, 0.02)
         nn.init.constant_(m.bias.data, 0.0)
 
-class Weighted(nn.Module):
-    def __init__(self, n):
-        super().__init__()
-        self.net = nn.Linear(n, 1)
-
-    def forward(self, x):
-        return self.net(x)
-
 class Interpolate(nn.Module):
     def __init__(self, scale):
         super(Interpolate, self).__init__()
@@ -69,10 +61,10 @@ class ResBlock(nn.Module):
         
         self.net = nn.Sequential(
             nn.Conv2d(n, n, k, stride=s, padding=1),
-            nn.InstanceNorm2d(n, affine=False),
+            #nn.InstanceNorm2d(n, affine=False),
             nn.ReLU(),
             nn.Conv2d(n, n, k, stride=s, padding=1),
-            nn.InstanceNorm2d(n, affine=False)
+            #nn.InstanceNorm2d(n, affine=False)
         )
 
     def forward(self, x):
@@ -80,7 +72,7 @@ class ResBlock(nn.Module):
 
 
 class Generator(nn.Module):
-    def __init__(self, in_dim=1, out_dim=1, hid_dim=32, n_rb=9):
+    def __init__(self, in_dim=1, out_dim=1, hid_dim=32, n_rb=12):
         super().__init__()
 
         self.down1 = UNetDown(in_dim, hid_dim, normalize=False)
@@ -132,10 +124,10 @@ class Discriminator(nn.Module):
             return layers
 
         self.model = nn.Sequential(
-            *_block(in_dim * 2, hid_dim, normalization=False),
-            *_block(hid_dim, hid_dim<<1),
-            *_block(hid_dim<<1, hid_dim<<2),
-            *_block(hid_dim<<2, hid_dim<<3),
+            *_block(in_dim * 2, hid_dim,    normalization=False),
+            *_block(hid_dim,    hid_dim<<1, normalization=False),
+            *_block(hid_dim<<1, hid_dim<<2, normalization=False),
+            *_block(hid_dim<<2, hid_dim<<3, normalization=False),
             nn.ZeroPad2d((1, 0, 1, 0)),
             nn.Conv2d(hid_dim<<3, 1, 4, padding=1, bias=False)
         )
