@@ -6,10 +6,10 @@ from torch.autograd import Variable
 from torchvision.utils import  make_grid
 from tqdm import tqdm
 
+from utils import *
 from networks import *
 from Sobel import SobelGrad
 from analysis import SSIM, ssim_1d, psnr
-from utils import *
 
 class Model:
     def __init__(self, opt):
@@ -63,36 +63,38 @@ class Model:
             real_fb[mask<250] = 0
             # Forward
             fake_fb,  fake_cb  = self.models["Gcf"](real_cb),          self.models["Gfc"](real_fb)
-            recov_fb, recov_cb = self.models["Gcf"](fake_cb),          self.models["Gfc"](fake_fb)
+            recov_fb, recov_cb = self.models["Gcf"](fake_cb[0]),          self.models["Gfc"](fake_fb[0])
             ident_fb, ident_cb = self.models["Gcf"](real_fb),          self.models["Gfc"](real_cb)
-            pred_fb,  pred_cb  = self.models["Df"] (fake_fb, real_cb), self.models["Dc"] (fake_cb, real_fb)
+            pred_fb,  pred_cb  = self.models["Df"] (fake_fb[0], real_cb), self.models["Dc"] (fake_cb[0], real_fb)
+            # Recover all size
+            self._interpolate(fake_fb), self._interpolate(fake_cb)
+            self._interpolate(recov_fb), self._interpolate(recov_cb)
+            self._interpolate(ident_fb), self._interpolate(ident_cb)
             # GAN Loss
             fb_gan_loss = l1Loss(pred_fb, ones)
             cb_gan_loss = l1Loss(pred_cb, ones)
             gan_loss    = fb_gan_loss + cb_gan_loss
             # Cycle Loss
-            fb_cycle_loss = l1Loss(recov_fb, real_fb)
-            cb_cycle_loss = l1Loss(recov_cb, real_cb)
+            fb_cycle_loss =  sum([l1Loss(recov_fb[i], real_fb) for i in range(4)])
+            cb_cycle_loss = sum([l1Loss(recov_cb[i], real_cb) for i in range(4)])
             cycle_loss    = fb_cycle_loss + cb_cycle_loss
             # Identity Loss
-            fb_ident_loss = l1Loss(ident_fb, real_fb)
-            cb_ident_loss = l1Loss(ident_cb, real_cb)
+            fb_ident_loss = sum([l1Loss(ident_fb[i], real_fb) for i in range(4)])
+            cb_ident_loss = sum([l1Loss(ident_cb[i], real_cb) for i in range(4)])
             ident_loss    = fb_ident_loss + cb_ident_loss
             # Content Loss
-            #fb_content_loss = mseLoss(fake_fb[mask>250], real_fb[mask>250])
-            #cb_content_loss = mseLoss(fake_cb[mask>250], real_cb[mask>250])
-            fb_content_loss = l1Loss(fake_fb, real_fb)
-            cb_content_loss = l1Loss(fake_cb, real_cb)
+            fb_content_loss = sum([l1Loss(fake_fb[i], real_fb) for i in range(4)])
+            cb_content_loss = sum([l1Loss(fake_cb[i], real_cb) for i in range(4)])
             content_loss    = fb_content_loss + cb_content_loss
             # Content Sobel
-            fb_sobel_loss = self._get_sobel_loss(real_fb, fake_fb)
-            cb_sobel_loss = self._get_sobel_loss(real_cb, fake_cb)
+            fb_sobel_loss = sum([self._get_sobel_loss(real_fb, fake_fb[i]) for i in range(4)])
+            cb_sobel_loss = sum([self._get_sobel_loss(real_cb, fake_cb[i]) for i in range(4)])
             sobel_loss    = fb_sobel_loss + cb_sobel_loss
             # Sum loss
             if epoch < self.opt.warm_epoch:
                 g_loss = content_loss + sobel_loss
             else:
-                g_loss = 1e-2 * gan_loss + cycle_loss + ident_loss + sobel_loss + content_loss
+                g_loss = 1e-2 * gan_loss + (cycle_loss + ident_loss + sobel_loss + content_loss) / 4
             # Backward
             self.g_optim.zero_grad()
             g_loss.backward()
@@ -103,7 +105,7 @@ class Model:
             if epoch >= self.opt.warm_epoch:
                 # Forward
                 pred_real = self.models["Df"](real_fb, real_cb)
-                pred_fake = self.models["Df"](fake_fb.detach(), real_cb)
+                pred_fake = self.models["Df"](fake_fb[0].detach(), real_cb)
                 loss_real = l1Loss(pred_real, ones)
                 loss_fake = l1Loss(pred_fake, zeros)
                 # Sum Loss
@@ -117,7 +119,7 @@ class Model:
                 # ------------------
                 # Forward
                 pred_real = self.models["Dc"](real_cb, real_fb)
-                pred_fake = self.models["Dc"](fake_cb.detach(), real_fb)
+                pred_fake = self.models["Dc"](fake_cb[0].detach(), real_fb)
                 loss_real = mseLoss(pred_real, ones)
                 loss_fake = mseLoss(pred_fake, zeros)
                 # Sum Loss
@@ -129,9 +131,9 @@ class Model:
 
             # Analysis
             with torch.no_grad():
-                psnr_loss   = psnr(fake_fb, real_fb).item()
-                msssim_loss = SSIM(fake_fb, real_fb).item()
-                ssim_loss   = ssim_1d(fake_fb[mask>250], real_fb[mask>250]).item()
+                psnr_loss   = psnr(fake_fb[0], real_fb).item()
+                msssim_loss = SSIM(fake_fb[0], real_fb).item()
+                ssim_loss   = ssim_1d(fake_fb[0][mask>250], real_fb[mask>250]).item()
             # Record 
             mean_msssim += msssim_loss
             mean_ssim   += ssim_loss
@@ -159,7 +161,7 @@ gan: {gan_loss: .3e}, cycle: {cycle_loss: .3e}, ident: {ident_loss: .3e}, sobel:
 
             real_cb[mask<250] = 0
             real_fb[mask<250] = 0
-            fake_fb = self.models["Gcf"](real_cb)
+            fake_fb = self.models["Gcf"](real_cb)[0]
 
             # Analysis
             psnr_loss   = psnr(fake_fb, real_fb).item()
@@ -195,10 +197,10 @@ gan: {gan_loss: .3e}, cycle: {cycle_loss: .3e}, ident: {ident_loss: .3e}, sobel:
         for idx in id_list:
             data = dataset.__getitem__(idx)
             real_cb, real_fb, mask = map(lambda z: torch.unsqueeze(z, 0).to(self.device), data)
-            fake_fb = self.models["Gcf"](real_cb)
-            real_cb, real_fb, fake_fb = map(lambda z: z.squeeze(0), [real_cb, real_fb, fake_fb])
+            fake_fb = self.models["Gcf"](real_cb)[0]
+            real_cb, real_fb, fake_fb, mask = map(lambda z: z.squeeze(0), [real_cb, real_fb, fake_fb, mask])
             img_sample = make_grid([real_cb, fake_fb, real_fb])
-            buf[f"idx"] = img_sample
+            buf[f"{idx}"] = [real_cb, real_fb, fake_fb, mask, img_sample]
         return buf
 
     def save(self, path, mode="best"):
@@ -209,6 +211,11 @@ gan: {gan_loss: .3e}, cycle: {cycle_loss: .3e}, ident: {ident_loss: .3e}, sobel:
         for i in self.models:
             self.models[i].load_state_dict(torch.load(os.path.join(self.opt.cpt_dir, f"{self.opt.no}/{mode}_{i}.cpt")))
             self.models[i].to(self.device)
+
+    def _interpolate(self, imgs):
+        for i in imgs.keys():
+            imgs[i] = F.interpolate(imgs[i], scale_factor=1<<i)
+        return imgs
 
     def _get_sobel_loss(self, real, fake):
         imgx, imgy = self.sobel(fake-real)

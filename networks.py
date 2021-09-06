@@ -21,9 +21,11 @@ class Interpolate(nn.Module):
 class UNetDown(nn.Module):
     def __init__(self, in_size, out_size, normalize=True, dropout=0.0):
         super().__init__()
-        layers = [nn.Conv2d(in_size, out_size, 4, 2, 1, bias=False)]
+        layers = [nn.Conv2d(in_size, out_size, kernel_size=4, stride=2, padding=1, bias=True)]
         if normalize:
-            layers.append(nn.InstanceNorm2d(out_size))
+            #layers.append(nn.InstanceNorm2d(out_size))
+            layers.append(nn.BatchNorm2d(out_size))
+
         layers.append(nn.LeakyReLU(0.2))
         if dropout:
             layers.append(nn.Dropout(dropout))
@@ -37,9 +39,9 @@ class UNetUp(nn.Module):
     def __init__(self, in_size, out_size, dropout=0.0):
         super().__init__()
         layers = [
-            nn.Conv2d(in_size, out_size, 3, 1, 1, bias=False),
+            nn.Conv2d(in_size, out_size, kernel_size=3, stride=1, padding=1, bias=True),
             #nn.ConvTranspose2d(in_size, out_size, 4, 2, 1, bias=False),
-            #nn.InstanceNorm2d(out_size),
+            nn.InstanceNorm2d(out_size),
             #nn.BatchNorm2d(out_size),
             nn.ReLU(),
         ]
@@ -95,6 +97,10 @@ class Generator(nn.Module):
             nn.Tanh(),
         )
 
+        self.out0 = nn.Conv2d(hid_dim<<1, out_dim, kernel_size=3, padding=1)
+        self.out1 = nn.Conv2d(hid_dim<<2, out_dim, kernel_size=3, padding=1)
+        self.out2 = nn.Conv2d(hid_dim<<3, out_dim, kernel_size=3, padding=1)
+
     def forward(self, x):
         # U-Net generator with skip connections from encoder to decoder
         d1 = self.down1(x)
@@ -107,9 +113,17 @@ class Generator(nn.Module):
         u2 = self.up2(u1, d3)
         u3 = self.up3(u2, d2)
         u4 = self.up4(u3, d1)
-        out = self.final(u4)
+        u5 = self.final(u4)
 
-        return out
+        u4 = self.out0(u4)
+        u3 = self.out1(u3)
+        u2 = self.out2(u2)
+
+        return {0: u5,
+                1: u4,
+                2: u3,
+                3: u2,
+                }
 
 class Discriminator(nn.Module):
     def __init__(self, in_dim=1, hid_dim=32):
@@ -134,5 +148,6 @@ class Discriminator(nn.Module):
 
     def forward(self, img_A, img_B):
         # Concatenate image and condition image by dim to produce input
-        img_input = torch.cat((img_A, img_B), 1)
+        for i, (img_a, img_b) in enumerate(zip(img_A, img_B)):
+            img_input = torch.cat((img_A, img_B), 1)
         return self.model(img_input)
