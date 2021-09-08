@@ -23,8 +23,8 @@ class UNetDown(nn.Module):
         super().__init__()
         layers = [nn.Conv2d(in_size, out_size, kernel_size=4, stride=2, padding=1, bias=True)]
         if normalize:
-            #layers.append(nn.InstanceNorm2d(out_size))
-            layers.append(nn.BatchNorm2d(out_size))
+            layers.append(nn.InstanceNorm2d(out_size))
+            #layers.append(nn.BatchNorm2d(out_size))
 
         layers.append(nn.LeakyReLU(0.2))
         if dropout:
@@ -40,7 +40,6 @@ class UNetUp(nn.Module):
         super().__init__()
         layers = [
             nn.Conv2d(in_size, out_size, kernel_size=3, stride=1, padding=1, bias=True),
-            #nn.ConvTranspose2d(in_size, out_size, 4, 2, 1, bias=False),
             nn.InstanceNorm2d(out_size),
             #nn.BatchNorm2d(out_size),
             nn.ReLU(),
@@ -94,7 +93,7 @@ class Generator(nn.Module):
             nn.Upsample(scale_factor=2),
             nn.ZeroPad2d((1, 0, 1, 0)),
             nn.Conv2d(hid_dim<<1, out_dim, 4, padding=1),
-            nn.Tanh(),
+            #nn.Tanh(),
         )
 
         self.out0 = nn.Conv2d(hid_dim<<1, out_dim, kernel_size=3, padding=1)
@@ -133,21 +132,24 @@ class Discriminator(nn.Module):
             """Returns downsampling layers of each  block"""
             layers = [nn.Conv2d(in_dim, out_dim, 4, stride=2, padding=1)]
             if normalization:
-                layers.append(nn.InstanceNorm2d(out_dim))
+                #layers.append(nn.InstanceNorm2d(out_dim))
+                layers.append(nn.BatchNorm2d(out_dim))
             layers.append(nn.LeakyReLU(0.2))
             return layers
 
         self.model = nn.Sequential(
-            *_block(in_dim * 2, hid_dim,    normalization=False),
-            *_block(hid_dim,    hid_dim<<1, normalization=False),
-            *_block(hid_dim<<1, hid_dim<<2, normalization=False),
-            *_block(hid_dim<<2, hid_dim<<3, normalization=False),
+            *_block(in_dim,     hid_dim,    normalization=False),
+            *_block(hid_dim,    hid_dim<<1, normalization=True),
+            *_block(hid_dim<<1, hid_dim<<2, normalization=True),
+            *_block(hid_dim<<2, hid_dim<<3, normalization=True),
             nn.ZeroPad2d((1, 0, 1, 0)),
             nn.Conv2d(hid_dim<<3, 1, 4, padding=1, bias=False)
         )
 
-    def forward(self, img_A, img_B):
-        # Concatenate image and condition image by dim to produce input
-        for i, (img_a, img_b) in enumerate(zip(img_A, img_B)):
-            img_input = torch.cat((img_A, img_B), 1)
-        return self.model(img_input)
+    def forward(self, img):
+        return self.model(img)
+    #def forward(self, img_A, img_B):
+    #    # Concatenate image and condition image by dim to produce input
+    #    for i, (img_a, img_b) in enumerate(zip(img_A, img_B)):
+    #        img_input = torch.cat((img_A, img_B), 1)
+    #    return self.model(img_input)
