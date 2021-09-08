@@ -90,12 +90,10 @@ def save_csv(name, qas, save_path):
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writerow({
                 fieldnames[0]: name,
-                fieldnames[1]: qas[0],
-                fieldnames[2]: qas[1],
-                fieldnames[3]: qas[2],
-                fieldnames[4]: qas[3],
-                fieldnames[5]: qas[4],
-                fieldnames[6]: qas[5],
+                fieldnames[1]: f"{qas[0]:.4f}",
+                fieldnames[2]: f"{qas[1]:.4f}",
+                fieldnames[3]: f"{qas[2]:.4f}",
+                fieldnames[4]: f"{qas[3]:.4f}",
+                fieldnames[5]: f"{qas[4]:.4f}",
+                fieldnames[6]: f"{qas[5]:.4f}",
             })
-        
-
